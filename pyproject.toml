@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipnest"
+version = "1.0.0"
+description = "Liquid-glass video downloader for Windows: X, TikTok, Instagram, Facebook and more, up to 4K or MP3, with clean metadata and a built-in editor."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6-Essentials>=6.7",
+    "yt-dlp[default]>=2025.10",
+    "numpy>=1.26",
+    "Pillow>=11.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.gui-scripts]
+clipnest = "clipnest.app:main"
+
+[tool.setuptools.packages.find]
+include = ["clipnest*"]

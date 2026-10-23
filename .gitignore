@@ -1,0 +1,41 @@
+# Local research notes, never published
+replica/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pfx
+*.key
+
+# Build output
+bin/
+obj/
+build/
+dist/
+out/
+publish/
+*.msi
+*.msix
+*.exe
+
+# Dependencies
+node_modules/
+packages/
+.venv/
+__pycache__/
+*.egg-info/
+
+# Editors and OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
+.pytest_cache/
