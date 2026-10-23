@@ -34,7 +34,20 @@ Then trim it, resize it for TikTok/Reels, and add text and a logo in the built-i
 - **Liquid glass**: a frosted, translucent window that shows the desktop behind it, with
   text that turns dark on light backgrounds and light on dark ones.
 
-## Install and run
+## Download
+
+Get `Clipnest-Setup-<version>.exe` from [Releases](https://github.com/Niro54321/Clipnest/releases).
+It installs for your user only (no admin prompt) and can fetch FFmpeg for you with winget.
+
+The installer isn't code-signed yet, so Windows SmartScreen may say *"Windows protected your PC"*:
+click **More info → Run anyway**. To check that your copy is the one published here, compare its
+SHA-256 with the `.sha256` file next to it in the release:
+
+```bash
+certutil -hashfile Clipnest-Setup-1.0.0.exe SHA256
+```
+
+## Run from source
 
 You need Windows 10/11, Python 3.10 or newer, and FFmpeg (it isn't bundled):
 
@@ -70,6 +83,18 @@ Clipnest finds FFmpeg on `PATH` or in winget's install folders. Downloads go to
 The tests make their own clips with FFmpeg and check the clean metadata, every export format,
 the editor presets, trimming, overlays and the smart helpers. Set `CLIPNEST_NETWORK=1` to also
 download a real public video.
+
+## Build the installer
+
+```bash
+.venv\Scripts\python -m pip install pyinstaller
+.venv\Scripts\python packaging\build.py
+```
+
+It builds `dist\Clipnest\Clipnest.exe` with PyInstaller, runs a self-test inside the packaged
+app (yt-dlp extras, clean files, an editor export, playback), then makes
+`dist\Clipnest-Setup-<version>.exe` with [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+and writes its SHA-256.
 
 ## How it works
 
