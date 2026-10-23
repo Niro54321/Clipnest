@@ -19,9 +19,10 @@ Then trim it, resize it for TikTok/Reels, and add text and a logo in the built-i
   - Trim: type the minutes to keep, or scrub the preview and press *Start here* / *End here*.
   - Resize presets: 9:16 TikTok/Reels, 1:1, 4:5, 16:9, either cropped to fill or fitted on a blurred copy.
   - Text overlay in any language (Arabic shapes and runs right to left), with size, position,
-    colour, outline or a background box.
+    any colour and shade you pick ((+) opens a picker), outline or a background box.
   - Logo/image overlay with size, corner and opacity.
-  - A preview you can play with sound (Play/Pause, 10 s back and forward; Space, ← and →)
+  - A preview you can play with sound, with YouTube-style controls (play/pause, 10 s back and
+    forward; Space, ← and →)
     with the edits drawn live, and FFmpeg's exact frame when paused. Playback stays inside the trim.
 - **Smart, and all offline**
   - *Catch copied links*: copy a video link anywhere and it appears in Clipnest, ready to download.

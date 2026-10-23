@@ -9,8 +9,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                                QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout,
                                QWidget)
@@ -19,10 +19,17 @@ from clipnest import edit, smart
 from clipnest.download import AUDIO_FORMATS, VIDEO_FORMATS
 from clipnest.player import Player, compose
 from clipnest.util import fmt_time, parse_time
-from clipnest.widgets import GlassDialog, Segmented, SliderRow, Swatches, Worker, label
+from clipnest.icons import icon
+from clipnest.pickers import Swatches
+from clipnest.widgets import GlassDialog, Segmented, SliderRow, Worker, label
 
 COLORS = ["#FFFFFF", "#111111", "#FFD60A", "#FF3B5C", "#7C5CFF", "#34D399"]
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def luminance(color: str) -> float:
+    c = QColor(color)
+    return (0.2126 * c.redF() + 0.7152 * c.greenF() + 0.0722 * c.blueF())
 
 
 def section(title: str) -> tuple[QWidget, QVBoxLayout]:
@@ -64,17 +71,21 @@ class Editor(GlassDialog):
         self.preview.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         left.addWidget(self.preview, 1)
         scrub = QHBoxLayout()
-        self.back_button = QPushButton("« 10 s")
+        self.back_button = QPushButton()
         self.back_button.setToolTip("Back 10 seconds (←)")
-        self.play_button = QPushButton("▶  Play")
-        self.play_button.setProperty("primary", True)
-        self.play_button.setMinimumWidth(96)
+        self.play_button = QPushButton()
         self.play_button.setToolTip("Play or pause the part you keep (Space)")
-        self.forward_button = QPushButton("10 s »")
+        self.forward_button = QPushButton()
         self.forward_button.setToolTip("Forward 10 seconds (→)")
-        for b in (self.back_button, self.play_button, self.forward_button):
+        for b, size in ((self.back_button, 40), (self.play_button, 46), (self.forward_button, 40)):
             b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            b.setProperty("player", True)
+            b.setFixedSize(size, size)
+            b.setIconSize(QSize(size - 12, size - 12))
+            b.setStyleSheet(f"border-radius: {size // 2}px;")
+            b.setCursor(Qt.CursorShape.PointingHandCursor)
             scrub.addWidget(b)
+        scrub.addSpacing(6)
         self.time = QSlider(Qt.Orientation.Horizontal)
         self.time.setRange(0, max(1, int(self.media.duration * 10)))
         self.time_label = QLabel("0:00")
@@ -166,6 +177,7 @@ class Editor(GlassDialog):
         self.text_pos = Segmented([("top", "Top"), ("center", "Middle"), ("bottom", "Bottom")], "bottom")
         lay.addWidget(self.text_pos)
         self.text_color = Swatches(COLORS, "auto")
+        self.text_color.setToolTip("Pick a colour, or (+) for any colour and shade")
         lay.addWidget(self.text_color)
         self.text_box = QCheckBox("Background box")
         lay.addWidget(self.text_box)
@@ -242,6 +254,8 @@ class Editor(GlassDialog):
         self.time.sliderMoved.connect(lambda v: self.player.is_playing and self.player.seek(v / 10))
         self.time.setValue(min(int(self.media.duration * 10), 20))
         self.frame.style_children()
+        self.frame.look_changed.connect(self.update_icons)
+        self.update_icons()
         self.aspect_changed(suggested_aspect)
 
     # ----------------------------------------------------------- state
@@ -254,8 +268,9 @@ class Editor(GlassDialog):
         if end <= start:
             end = self.media.duration
         color = self.text_color.get()
-        text_color, outline = self.auto_colors if color == "auto" else (color, smart.text_colors(
-            0.9 if color in ("#FFFFFF", "#FFD60A", "#34D399") else 0.1)[1])
+        # a light colour gets a dark outline and the other way round
+        text_color, outline = self.auto_colors if color == "auto" else (
+            color, smart.text_colors(luminance(color))[1])
         return edit.EditSpec(start=start, end=end, aspect=self.aspect.get() or "original",
                              fit=self.fit.get() or "fill", focus_x=self.focus.get() / 100,
                              focus_y=self._focus_y, text=self.text.text(), text_size=self.text_size.get(),
@@ -384,8 +399,14 @@ class Editor(GlassDialog):
         self.time.blockSignals(False)
         self.show_time(seconds)
 
+    def update_icons(self, *_):
+        color = QColor(self.frame.look.text)
+        self.play_button.setIcon(icon("pause" if self.player.is_playing else "play", color))
+        self.back_button.setIcon(icon("back10", color))
+        self.forward_button.setIcon(icon("forward10", color))
+
     def playing_changed(self, playing: bool):
-        self.play_button.setText("❚❚  Pause" if playing else "▶  Play")
+        self.update_icons()
         if not playing and self.video:
             self.timer.start()   # back to FFmpeg's exact frame where it stopped
 

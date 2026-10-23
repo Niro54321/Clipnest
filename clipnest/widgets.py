@@ -1,6 +1,6 @@
 """Glass windows and the small controls on them, after Spinvert's editors:
 a frameless window you resize by its edges, pill toggles, slider rows,
-round colour swatches, and a worker that runs a job off the UI thread."""
+and a worker that runs a job off the UI thread."""
 
 from __future__ import annotations
 
@@ -224,49 +224,6 @@ class SliderRow(QWidget):
 
     def set(self, v: float):
         self.slider.setValue(int(round(v * self.scale)))
-
-
-class Swatches(QWidget):
-    """Round colour buttons, one picked at a time. 'auto' lets the app choose."""
-
-    changed = Signal(str)
-
-    def __init__(self, colors: list[str], current: str, auto: bool = True):
-        super().__init__()
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-        self.group = QButtonGroup(self)
-        self.buttons: dict[str, QPushButton] = {}
-        if auto:
-            b = QPushButton("Auto")
-            b.setCheckable(True)
-            b.setProperty("segment", True)
-            b.setToolTip("Pick black or white from how bright the video is behind the text")
-            self._add("auto", b, row)
-        for c in colors:
-            b = QPushButton()
-            b.setCheckable(True)
-            b.setFixedSize(26, 26)
-            b.setProperty("swatch", True)
-            b.setStyleSheet(f"QPushButton {{ background: {c}; }}")
-            b.setToolTip(c)
-            self._add(c, b, row)
-        row.addStretch()
-        self.set(current)
-
-    def _add(self, key, b, row):
-        b.clicked.connect(lambda _=False, k=key: self.changed.emit(k))
-        self.group.addButton(b)
-        self.buttons[key] = b
-        row.addWidget(b)
-
-    def get(self) -> str:
-        return next((k for k, b in self.buttons.items() if b.isChecked()), "auto")
-
-    def set(self, key):
-        if key in self.buttons:
-            self.buttons[key].setChecked(True)
 
 
 class Worker(QObject):

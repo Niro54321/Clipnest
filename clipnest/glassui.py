@@ -90,6 +90,10 @@ def style_sheet(look) -> str:
         QPushButton[segment="true"] {{ padding: 5px 13px; border-radius: 13px; font-weight: 600; }}
         QPushButton[segment="true"]:checked {{ color: {primary_fg}; background: {primary_bg};
                                                border: 1px solid {primary_bg}; }}
+        QPushButton[player="true"] {{ background: transparent; border: none; padding: 0;
+                                      border-radius: 20px; }}
+        QPushButton[player="true"]:hover {{ background: {hover}; }}
+        QPushButton[player="true"]:pressed {{ background: {fill}; }}
         QPushButton[swatch="true"] {{ padding: 0; border-radius: 13px; border: 2px solid {edge}; }}
         QPushButton[swatch="true"]:checked {{ border: 3px solid #7C5CFF; }}
         QWidget[card="true"] {{ background: {card}; border: 1px solid {card_edge}; border-radius: 16px; }}
