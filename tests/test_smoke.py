@@ -195,3 +195,30 @@ def test_windows_build(clip):
     assert e.spec().end == pytest.approx(6.0, abs=0.1)
     e.done(0)
     w.close()
+
+
+def test_hevc_becomes_h264_when_compatible(clip, tmp_path):
+    hevc = tmp_path / "hevc.mkv"
+    subprocess.run([FFMPEG, "-v", "error", "-y", "-i", str(clip), "-t", "2", "-c:v", "libx265",
+                    "-preset", "ultrafast", "-c:a", "copy", str(hevc)], check=True)
+    for compatible, codec in ((True, "h264"), (False, "hevc")):
+        out = tmp_path / f"out-{compatible}.mp4"
+        v, a = download._streams(ffprobe_next_to(FFMPEG), hevc)
+        download.run_ffmpeg(download.clean_command(FFMPEG, hevc, out, "mp4", v, a, compatible=compatible),
+                            2, None, "")
+        assert download._streams(ffprobe_next_to(FFMPEG), out)[0] == codec
+
+
+def test_format_choice_prefers_resolution_then_codec():
+    assert download.format_selector("mp4", 1080) == ("bv*+ba/b", ["res:1080", "fps", "vcodec:h264"])
+    assert download.format_selector("webm", None)[1] == ["res", "fps", "vcodec:vp9"]
+    assert download.format_selector("mp3", None)[0] == "ba/b"
+
+
+@pytest.mark.skipif(os.environ.get("CLIPNEST_NETWORK") != "1", reason="network test")
+def test_real_tiktok(tmp_path):
+    c = download.probe("https://www.tiktok.com/@cartoons_and_movi/video/7683106671551434002")
+    assert c.platform == "TikTok" and c.heights
+    out = download.download(download.Job(clip=c, fmt="mp4", folder=tmp_path, name="tt"), FFMPEG)
+    assert download._streams(ffprobe_next_to(FFMPEG), out)[0] == "h264"
+    assert "tiktok" not in json.dumps(tags(out)["tags"]).lower()

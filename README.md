@@ -9,6 +9,9 @@ Then trim it, resize it for TikTok/Reels, and add text and a logo in the built-i
 
 - **Any quality, any format**: MP4, WebM, MKV, MOV, or audio only as MP3, M4A, Opus, FLAC or WAV.
   The quality list shows what the link actually offers (up to 4K) with an estimated size for each.
+- **Plays everywhere**: some sites (TikTok, YouTube above 1080p) send HEVC or AV1, which many
+  Windows players can't open. Clipnest picks the highest resolution first, prefers H.264 when it's
+  on offer at that resolution, and otherwise converts to H.264 at the same quality (switch it off to keep the original).
 - **Clean metadata**: every tag the source left is dropped (title, comment, source URL, chapters,
   encoder version) and the file gets today's date, not the upload date. MP3 and M4A get the
   title, artist and cover you choose instead.
@@ -44,6 +47,10 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python -m clipnest
 ```
+
+`requirements.txt` installs yt-dlp with its extras: `curl_cffi` (TikTok needs browser
+impersonation) and `yt-dlp-ejs` (YouTube's player challenges). Update yt-dlp now and then,
+since sites change: `.venv\Scripts\python -m pip install -U "yt-dlp[default,curl-cffi]"`.
 
 Clipnest finds FFmpeg on `PATH` or in winget's install folders. Downloads go to
 `Downloads\Clipnest` unless you choose another folder. To open the editor on a file you already have:

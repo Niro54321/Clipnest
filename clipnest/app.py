@@ -22,7 +22,7 @@ from clipnest.widgets import GlassWindow, Segmented, Worker, label
 
 SETTINGS = app_data_dir() / "settings.json"
 DEFAULTS = {"kind": "video", "video_fmt": "mp4", "audio_fmt": "mp3", "quality": "best", "bitrate": 320,
-            "folder": "", "editor": True, "watch": True}
+            "folder": "", "editor": True, "watch": True, "compatible": True}
 
 
 def load_settings() -> dict:
@@ -128,6 +128,11 @@ class MainWindow(GlassWindow):
         tags.addWidget(self.tag_artist, 1)
         tags.addWidget(self.cover)
         self.body.addWidget(self.tags)
+        self.compatible = QCheckBox("Plays everywhere (H.264)")
+        self.compatible.setChecked(self.settings["compatible"])
+        self.compatible.setToolTip("Some sites send HEVC or AV1, which many Windows players can't open.\n"
+                                   "Clipnest converts those to H.264 at the same quality. Off = keep the original codec.")
+        self.body.addWidget(self.compatible)
 
         where = QHBoxLayout()
         self.folder = Path(self.settings["folder"]) if self.settings["folder"] else downloads_dir()
@@ -180,8 +185,9 @@ class MainWindow(GlassWindow):
 
         self.kind.changed.connect(self.kind_changed)
         self.fmt.currentTextChanged.connect(self.remember)
+        self.fmt.currentTextChanged.connect(self.update_compatible)
         self.quality.currentIndexChanged.connect(self.remember)
-        for box in (self.open_editor, self.watch):
+        for box in (self.open_editor, self.watch, self.compatible):
             box.toggled.connect(self.remember)
         QGuiApplication.clipboard().dataChanged.connect(self.clipboard_changed)
         self.kind_changed(self.settings["kind"])
@@ -198,9 +204,14 @@ class MainWindow(GlassWindow):
         self.fmt.setCurrentText(self.settings["audio_fmt" if audio else "video_fmt"].upper())
         self.fmt.blockSignals(False)
         self.tags.setVisible(audio)
+        self.update_compatible()
         self.quality_label.setText("Bitrate" if audio else "Quality")
         self.fill_quality()
         self.remember()
+
+    def update_compatible(self, *_):
+        if hasattr(self, "compatible"):
+            self.compatible.setVisible(self.kind.get() == "video" and self.fmt.currentText() in ("MP4", "MOV"))
 
     def fill_quality(self):
         audio = self.kind.get() == "audio"
@@ -245,6 +256,7 @@ class MainWindow(GlassWindow):
             s["bitrate" if kind == "audio" else "quality"] = data
         s["editor"] = self.open_editor.isChecked()
         s["watch"] = self.watch.isChecked()
+        s["compatible"] = self.compatible.isChecked()
         s["folder"] = str(self.folder)
         save_settings(s)
 
@@ -366,7 +378,8 @@ class MainWindow(GlassWindow):
         job = Job(clip=self.clip, fmt=fmt, folder=self.folder, name=self.name.text().strip(),
                   height=None if kind == "audio" or data == "best" else data,
                   title=self.tag_title.text().strip(), artist=self.tag_artist.text().strip(),
-                  cover=self.cover.isChecked(), audio_bitrate=data if kind == "audio" else 320)
+                  cover=self.cover.isChecked(), audio_bitrate=data if kind == "audio" else 320,
+                  compatible=self.compatible.isChecked())
 
         def work(progress, cancelled):
             return download.download(job, self.ffmpeg, progress, cancelled)

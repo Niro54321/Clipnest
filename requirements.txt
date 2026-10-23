@@ -1,5 +1,5 @@
 PySide6-Essentials>=6.7
-yt-dlp[default]>=2025.10
+yt-dlp[default,curl-cffi]>=2025.10
 numpy>=1.26
 Pillow>=11.0
 pytest>=8

@@ -134,12 +134,16 @@ def estimate_size(clip: Clip, height: int | None, audio_only: bool) -> float:
     return best_video + (0 if muxed else best_audio)
 
 
-def format_selector(fmt: str, height: int | None) -> str:
+def format_selector(fmt: str, height: int | None) -> tuple[str, list[str]]:
+    """yt-dlp's format and format_sort: the highest resolution up to the cap first,
+    and among equals the codec the container plays best (H.264 for MP4/MOV, VP9 for WebM)."""
     if fmt in AUDIO_FORMATS:
-        return "ba/b"
-    cap = f"[height<={height}]" if height else ""
-    prefer = {"mp4": "[vcodec^=avc1]", "mov": "[vcodec^=avc1]", "webm": "[vcodec^=vp9]"}.get(fmt, "")
-    return f"bv*{cap}{prefer}+ba/bv*{cap}+ba/b{cap}/bv*+ba/b"
+        return "ba/b", ["abr", "asr"]
+    sort = [f"res:{height}" if height else "res", "fps"]
+    codec = {"mp4": "vcodec:h264", "mov": "vcodec:h264", "webm": "vcodec:vp9"}.get(fmt)
+    if codec:
+        sort.append(codec)
+    return "bv*+ba/b", sort
 
 
 @dataclass
@@ -153,6 +157,7 @@ class Job:
     artist: str = ""
     cover: bool = True
     audio_bitrate: int = 320
+    compatible: bool = True       # MP4/MOV: turn HEVC, AV1 or VP9 into H.264 so every player opens it
 
 
 Progress = Callable[[float, str], None]   # (0..1, status text)
@@ -209,7 +214,8 @@ def run_ffmpeg(cmd: list[str], duration: float, progress: Progress | None, label
 
 
 def clean_command(ffmpeg: str, src: Path, dst: Path, fmt: str, vcodec: str | None, acodec: str | None,
-                  title: str = "", artist: str = "", cover: Path | None = None, bitrate: int = 320) -> list[str]:
+                  title: str = "", artist: str = "", cover: Path | None = None, bitrate: int = 320,
+                  compatible: bool = False) -> list[str]:
     """FFmpeg arguments that write src as dst in fmt with no source metadata at all."""
     cmd = [ffmpeg, "-i", str(src)]
     audio = fmt in AUDIO_FORMATS
@@ -238,12 +244,14 @@ def clean_command(ffmpeg: str, src: Path, dst: Path, fmt: str, vcodec: str | Non
         cmd += ["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn"]
         okv, oka = COPY_OK[fmt]
         copy_video = okv is None or vcodec in okv
+        if compatible and fmt in ("mp4", "mov") and vcodec != "h264":
+            copy_video = False
         if copy_video:
             cmd += ["-c:v", "copy"]
         elif fmt == "webm":
             cmd += ["-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1", "-flags:v", "+bitexact"]
         else:
-            cmd += ["-c:v", "libx264", "-crf", "19", "-preset", "medium", "-pix_fmt", "yuv420p",
+            cmd += ["-c:v", "libx264", "-crf", "19", "-preset", "fast", "-pix_fmt", "yuv420p",
                     "-flags:v", "+bitexact"]
         if acodec is None or oka is None or acodec in oka:
             cmd += ["-c:a", "copy"]
@@ -289,8 +297,10 @@ def download(job: Job, ffmpeg: str, progress: Progress | None = None,
                     text += f"  ·  {speed / 1e6:.1f} MB/s"
                 progress(done / total if total else 0.0, text)
 
+        selector, sort = format_selector(job.fmt, job.height)
         opts = _base_opts() | {
-            "format": format_selector(job.fmt, job.height),
+            "format": selector,
+            "format_sort": sort,
             "outtmpl": str(tmp / "source.%(ext)s"),
             "merge_output_format": "mkv",
             "ffmpeg_location": str(Path(ffmpeg).parent),
@@ -332,10 +342,13 @@ def download(job: Job, ffmpeg: str, progress: Progress | None = None,
         part = out.with_name(out.stem + ".part" + out.suffix)
         cmd = clean_command(ffmpeg, src, part, job.fmt, vcodec, acodec,
                             title=job.title if audio else "", artist=job.artist if audio else "",
-                            cover=cover, bitrate=job.audio_bitrate)
+                            cover=cover, bitrate=job.audio_bitrate, compatible=job.compatible)
         if progress:
             progress(0.0, "Cleaning metadata…")
-        run_ffmpeg(cmd, job.clip.duration, progress, "Writing a clean file…", cancel)
+        converting = not audio and cmd[cmd.index("-c:v") + 1] != "copy"
+        run_ffmpeg(cmd, job.clip.duration, progress,
+                   "Converting to H.264…" if converting and job.fmt in ("mp4", "mov") else
+                   "Converting…" if converting else "Writing a clean file…", cancel)
         part.replace(out)
         return out
     finally:
