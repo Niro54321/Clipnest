@@ -1,5 +1,5 @@
 """The step after a download: trim, resize for TikTok/Reels/YouTube, add text
-and a logo, with a live preview that FFmpeg renders with the real edits."""
+and a logo, with a preview you can play (edits drawn live) and an exact FFmpeg frame when paused."""
 
 from __future__ import annotations
 
@@ -10,13 +10,14 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
                                QProgressBar, QPushButton, QScrollArea, QSizePolicy, QSlider, QVBoxLayout,
                                QWidget)
 
 from clipnest import edit, smart
 from clipnest.download import AUDIO_FORMATS, VIDEO_FORMATS
+from clipnest.player import Player, compose
 from clipnest.util import fmt_time, parse_time
 from clipnest.widgets import GlassDialog, Segmented, SliderRow, Swatches, Worker, label
 
@@ -63,6 +64,17 @@ class Editor(GlassDialog):
         self.preview.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         left.addWidget(self.preview, 1)
         scrub = QHBoxLayout()
+        self.back_button = QPushButton("« 10 s")
+        self.back_button.setToolTip("Back 10 seconds (←)")
+        self.play_button = QPushButton("▶  Play")
+        self.play_button.setProperty("primary", True)
+        self.play_button.setMinimumWidth(96)
+        self.play_button.setToolTip("Play or pause the part you keep (Space)")
+        self.forward_button = QPushButton("10 s »")
+        self.forward_button.setToolTip("Forward 10 seconds (→)")
+        for b in (self.back_button, self.play_button, self.forward_button):
+            b.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            scrub.addWidget(b)
         self.time = QSlider(Qt.Orientation.Horizontal)
         self.time.setRange(0, max(1, int(self.media.duration * 10)))
         self.time_label = QLabel("0:00")
@@ -71,6 +83,20 @@ class Editor(GlassDialog):
         scrub.addWidget(self.time_label)
         left.addLayout(scrub)
         row.addLayout(left, 1)
+
+        self.player = Player(path, video=self.video, parent=self)
+        self.player.frame.connect(self.show_playing_frame)
+        self.player.position.connect(self.played_to)
+        self.player.playing.connect(self.playing_changed)
+        self.play_button.clicked.connect(self.toggle_play)
+        self.back_button.clicked.connect(lambda: self.skip(-10))
+        self.forward_button.clicked.connect(lambda: self.skip(10))
+        for key, fn in ((Qt.Key.Key_Space, self.toggle_play), (Qt.Key.Key_Left, lambda: self.skip(-10)),
+                        (Qt.Key.Key_Right, lambda: self.skip(10))):
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.activated.connect(fn)
+        self._layers_key = None
+        self._layers: tuple[QImage | None, QImage | None] = (None, None)
 
         # right: the settings
         panel = QWidget()
@@ -212,8 +238,8 @@ class Editor(GlassDialog):
                     self.text_pos.changed, self.logo_pos.changed, self.fit.changed, self.text_color.changed):
             sig.connect(self.changed)
         self.aspect.changed.connect(self.aspect_changed)
-        self.time.valueChanged.connect(lambda v: self.time_label.setText(
-            f"{fmt_time(v / 10)} / {fmt_time(self.media.duration)}"))
+        self.time.valueChanged.connect(lambda v: self.show_time(v / 10))
+        self.time.sliderMoved.connect(lambda v: self.player.is_playing and self.player.seek(v / 10))
         self.time.setValue(min(int(self.media.duration * 10), 20))
         self.frame.style_children()
         self.aspect_changed(suggested_aspect)
@@ -244,7 +270,7 @@ class Editor(GlassDialog):
     def changed(self, *_):
         s = self.spec()
         self.length.setText(f"Keeps {fmt_time(s.end - s.start)} of {fmt_time(self.media.duration)}")
-        if self.video:
+        if self.video and not self.player.is_playing:
             self.timer.start()
 
     def aspect_changed(self, key):
@@ -322,6 +348,69 @@ class Editor(GlassDialog):
         self.logo = path
         self.logo_name.setText(path.name if path else "No logo")
         self.changed()
+
+    # ----------------------------------------------------------- playback
+
+    def show_time(self, seconds: float):
+        self.time_label.setText(f"{fmt_time(seconds)} / {fmt_time(self.media.duration)}")
+
+    def toggle_play(self):
+        if self.player.is_playing:
+            self.player.pause()
+            return
+        s = self.spec()
+        pos = self.time.value() / 10
+        if pos < s.start or pos >= s.end - 0.3:   # play the part that is kept
+            pos = s.start
+        self.time.blockSignals(True)
+        self.time.setValue(int(pos * 10))
+        self.time.blockSignals(False)
+        self.show_time(pos)
+        self.player.play(pos, s.end)
+
+    def skip(self, delta: float):
+        pos = min(self.media.duration, max(0.0, self.time.value() / 10 + delta))
+        if self.player.is_playing:
+            self.player.seek(pos)
+            self.played_to(pos)
+        else:
+            self.time.setValue(int(pos * 10))
+
+    def played_to(self, seconds: float):
+        if not self.player.is_playing:
+            return
+        self.time.blockSignals(True)
+        self.time.setValue(int(seconds * 10))
+        self.time.blockSignals(False)
+        self.show_time(seconds)
+
+    def playing_changed(self, playing: bool):
+        self.play_button.setText("❚❚  Pause" if playing else "▶  Play")
+        if not playing and self.video:
+            self.timer.start()   # back to FFmpeg's exact frame where it stopped
+
+    def layers(self, spec: edit.EditSpec) -> tuple[QImage | None, QImage | None]:
+        """The text layer and the logo as images, redrawn only when they change."""
+        key = (spec.text, spec.text_size, spec.text_color, spec.outline_color, spec.text_pos, spec.text_box,
+               edit.out_size(spec, self.media), str(spec.logo))
+        if key != self._layers_key:
+            text = None
+            if spec.text.strip():
+                W, H = edit.out_size(spec, self.media)
+                path = Path(self.tmp.name) / "text-playing.png"
+                edit.render_text(spec, W, H, path)
+                text = QImage(str(path))
+            logo = QImage(str(spec.logo)) if spec.logo else None
+            self._layers_key, self._layers = key, (text, logo)
+        return self._layers
+
+    def show_playing_frame(self, image: QImage):
+        spec = self.spec()
+        text, logo = self.layers(spec)
+        size = self.preview.size() * 0.96
+        frame = compose(image, spec, self.media, text, logo, size.width(), size.height())
+        self._pixmap = QPixmap.fromImage(frame)
+        self.preview.setPixmap(self._pixmap)
 
     # ----------------------------------------------------------- preview
 
@@ -434,6 +523,7 @@ class Editor(GlassDialog):
     def done(self, r):
         if self.worker:
             self.worker.cancel()
+        self.player.close()
         self.tmp.cleanup()
         super().done(r)
 

@@ -21,7 +21,8 @@ Then trim it, resize it for TikTok/Reels, and add text and a logo in the built-i
   - Text overlay in any language (Arabic shapes and runs right to left), with size, position,
     colour, outline or a background box.
   - Logo/image overlay with size, corner and opacity.
-  - A live preview, rendered by FFmpeg with the real edits.
+  - A preview you can play with sound (Play/Pause, 10 s back and forward; Space, ← and →)
+    with the edits drawn live, and FFmpeg's exact frame when paused. Playback stays inside the trim.
 - **Smart, and all offline**
   - *Catch copied links*: copy a video link anywhere and it appears in Clipnest, ready to download.
   - Paste several links at once and they download one after another with the same settings.
