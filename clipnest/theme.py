@@ -7,56 +7,42 @@ from dataclasses import dataclass
 from io import BytesIO
 
 from PySide6.QtCore import QBuffer, QIODevice, QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPainterPathStroker, QPen, QPixmap
+from PySide6.QtGui import (QColor, QIcon, QLinearGradient, QPainter, QPainterPath, QPainterPathStroker,
+                           QPen, QPixmap)
 
-ACCENT = {"convert": QColor("#7C5CFF"), "tools": QColor("#06B6D4")}
-MARK = [QColor("#7C5CFF"), QColor("#06B6D4"), QColor("#F472B6"), QColor("#34D399")]
+MARK_FROM, MARK_TO = QColor("#7C5CFF"), QColor("#F472B6")   # the button's gradient
+STAR = QColor("#FFC93C")
 
 
-def ring_segment(center: QPointF, r_in: float, r_out: float, start: float, sweep: float) -> QPainterPath:
-    """Annular sector. Angles in degrees, Qt style (counter-clockwise from 3 o'clock)."""
-    outer = QRectF(center.x() - r_out, center.y() - r_out, 2 * r_out, 2 * r_out)
-    inner = QRectF(center.x() - r_in, center.y() - r_in, 2 * r_in, 2 * r_in)
+def play_path(rect: QRectF) -> QPainterPath:
+    """A play triangle with rounded corners, centred by its weight so it looks centred."""
+    s = min(rect.width(), rect.height())
+    c = rect.center()
+    h = s * 0.50                      # triangle height (left edge)
+    w = h * 0.93
+    left = c.x() - w * 0.40
+    tri = QPainterPath()
+    tri.moveTo(left, c.y() - h / 2)
+    tri.lineTo(left + w, c.y())
+    tri.lineTo(left, c.y() + h / 2)
+    tri.closeSubpath()
+    stroker = QPainterPathStroker()
+    stroker.setWidth(s * 0.09)
+    stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    return tri.united(stroker.createStroke(tri)).simplified()
+
+
+def star_path(center: QPointF, r: float) -> QPainterPath:
+    """A four-pointed sparkle."""
     path = QPainterPath()
-    path.arcMoveTo(outer, start)
-    path.arcTo(outer, start, sweep)
-    path.arcTo(inner, start + sweep, -sweep)
+    inner = r * 0.30
+    for i in range(8):
+        a = math.radians(-90 + i * 45)
+        k = r if i % 2 == 0 else inner
+        pt = QPointF(center.x() + k * math.cos(a), center.y() + k * math.sin(a))
+        path.moveTo(pt) if i == 0 else path.lineTo(pt)
     path.closeSubpath()
     return path
-
-
-def pill_segment(center: QPointF, r_in: float, r_out: float, center_angle: float, span: float,
-                 gap: float, rounding: float) -> QPainterPath:
-    """A wheel segment with an even gap to its neighbours and rounded corners."""
-    g = gap + 2 * rounding
-    ri, ro = r_in + rounding, r_out - rounding
-
-    def half(r):
-        return math.degrees(math.asin(min(0.99, g / (2 * r))))
-
-    so, eo = center_angle - span / 2 + half(ro), center_angle + span / 2 - half(ro)
-    si, ei = center_angle - span / 2 + half(ri), center_angle + span / 2 - half(ri)
-    outer = QRectF(center.x() - ro, center.y() - ro, 2 * ro, 2 * ro)
-    inner = QRectF(center.x() - ri, center.y() - ri, 2 * ri, 2 * ri)
-    path = QPainterPath()
-    path.arcMoveTo(outer, so)
-    path.arcTo(outer, so, eo - so)
-    path.arcTo(inner, ei, si - ei)
-    path.closeSubpath()
-    if rounding:
-        stroker = QPainterPathStroker()
-        stroker.setWidth(2 * rounding)
-        stroker.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        path = path.united(stroker.createStroke(path)).simplified()
-    return path
-
-
-def annulus(center: QPointF, r_in: float, r_out: float) -> QPainterPath:
-    outer = QPainterPath()
-    outer.addEllipse(center, r_out, r_out)
-    inner = QPainterPath()
-    inner.addEllipse(center, r_in, r_in)
-    return outer.subtracted(inner)
 
 
 @dataclass(frozen=True)
@@ -96,15 +82,30 @@ ON_BRIGHT = Glass(tint=QColor(246, 246, 250, 96), sheen=70, rim_top=230, rim_bot
 
 
 def draw_mark(p: QPainter, rect: QRectF) -> None:
-    """The Clipnest mark: a four-part ring around a dot."""
-    c = rect.center()
-    r = min(rect.width(), rect.height()) / 2
+    """The Clipnest mark: a gradient play button with a white play sign and a star in its middle."""
+    s = min(rect.width(), rect.height())
+    box = QRectF(rect.center().x() - s / 2, rect.center().y() - s / 2, s, s).adjusted(
+        s * 0.03, s * 0.03, -s * 0.03, -s * 0.03)
+    p.save()
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
     p.setPen(Qt.PenStyle.NoPen)
-    for i, color in enumerate(MARK):
-        p.setBrush(color)
-        p.drawPath(ring_segment(c, r * 0.52, r * 0.98, 90 - i * 90 - 84, 78))
-    p.setBrush(QColor("#F4F4F8"))
-    p.drawEllipse(c, r * 0.26, r * 0.26)
+    grad = QLinearGradient(box.topLeft(), box.bottomRight())
+    grad.setColorAt(0.0, MARK_FROM)
+    grad.setColorAt(1.0, MARK_TO)
+    button = QPainterPath()
+    button.addRoundedRect(box, box.width() * 0.28, box.height() * 0.28)
+    p.fillPath(button, grad)
+    shine = QLinearGradient(box.topLeft(), box.center())
+    shine.setColorAt(0.0, QColor(255, 255, 255, 70))
+    shine.setColorAt(1.0, QColor(255, 255, 255, 0))
+    p.fillPath(button, shine)
+    tri = play_path(box)
+    p.fillPath(tri, QColor("white"))
+    # the star sits on the play sign's centre of weight
+    b = tri.boundingRect()
+    center = QPointF(b.left() + b.width() * 0.38, b.center().y())
+    p.fillPath(star_path(center, s * 0.13), STAR)
+    p.restore()
 
 
 def app_icon() -> QIcon:
@@ -121,7 +122,7 @@ def app_icon() -> QIcon:
 
 
 def save_ico(path) -> None:
-    """Write the icon as .ico for the Send to shortcut."""
+    """Write the icon as .ico (for a shortcut or an installer)."""
     from PIL import Image
 
     buf = QBuffer()

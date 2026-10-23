@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QFileDialog, 
 from clipnest import __version__, download
 from clipnest.download import AUDIO_FORMATS, VIDEO_FORMATS, Clip, Job
 from clipnest.util import app_data_dir, downloads_dir, find_ffmpeg, fmt_time
+from clipnest.theme import app_icon
 from clipnest.widgets import GlassWindow, Segmented, Worker, label
 
 SETTINGS = app_data_dir() / "settings.json"
@@ -425,8 +426,14 @@ class MainWindow(GlassWindow):
 
 
 def main() -> None:
+    if sys.platform == "win32":
+        # its own taskbar button and icon, not python.exe's
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Niro54321.Clipnest")
     app = QApplication(sys.argv)
     app.setApplicationName("Clipnest")
+    app.setWindowIcon(app_icon())
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         QMessageBox.critical(None, "Clipnest", "Clipnest needs FFmpeg.\n\nInstall it with:\n"
