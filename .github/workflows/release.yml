@@ -1,0 +1,139 @@
+# Builds the Windows installer from the checked-in source on a GitHub-hosted runner.
+#
+# - Run it by hand (Actions > Release > Run workflow) to get an unsigned test build.
+# - Push a tag like v1.0.1 to build, sign and publish a release.
+#
+# Signing goes through the SignPath Foundation's free open-source programme and turns
+# on by itself once the repository has the variable SIGNPATH_ORGANIZATION_ID and the
+# secret SIGNPATH_API_TOKEN (Settings > Secrets and variables > Actions). The app is
+# signed first, then packed into the installer, then the installer is signed.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  SIGNING: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install FFmpeg (for the self-test) and Inno Setup
+        run: choco install ffmpeg innosetup -y --no-progress
+
+      - name: Install Python packages
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Tests
+        run: python -m pytest tests -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Build and self-test the app
+        run: python packaging/build.py --app
+
+      - name: Stage the app for signing
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: |
+          Remove-Item dist/Clipnest/clipnest-selftest.exe
+          Move-Item dist/Clipnest dist/Clipnest-unsigned
+
+      - name: Upload the unsigned app
+        if: env.SIGNING == 'true'
+        id: upload-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-unsigned
+          path: dist/Clipnest-unsigned
+
+      - name: Sign Clipnest.exe
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: Clipnest
+          signing-policy-slug: ${{ startsWith(github.ref, 'refs/tags/v') && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.upload-app.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: dist/Clipnest
+
+      - name: Build the installer
+        run: python packaging/build.py --installer
+
+      - name: Stage the installer for signing
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist/setup-unsigned | Out-Null
+          Move-Item dist/Clipnest-Setup-*.exe dist/setup-unsigned/Clipnest-Setup.exe
+
+      - name: Upload the unsigned installer
+        if: env.SIGNING == 'true'
+        id: upload-setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-unsigned
+          path: dist/setup-unsigned
+
+      - name: Sign the installer
+        if: env.SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: Clipnest
+          signing-policy-slug: ${{ startsWith(github.ref, 'refs/tags/v') && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.upload-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: dist/setup-signed
+
+      - name: Name the signed installer and its checksum
+        if: env.SIGNING == 'true'
+        shell: pwsh
+        run: |
+          $version = (python -c "import clipnest; print(clipnest.__version__)")
+          $name = "Clipnest-Setup-$version.exe"
+          Move-Item dist/setup-signed/Clipnest-Setup.exe "dist/$name"
+          Remove-Item "dist/$name.sha256" -ErrorAction SilentlyContinue
+          $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Out-File -Encoding ascii "dist/$name.sha256"
+          Get-AuthenticodeSignature "dist/$name" | Format-List Status, SignerCertificate
+
+      - name: Keep the installer with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: Clipnest-Setup
+          path: |
+            dist/Clipnest-Setup-*.exe
+            dist/Clipnest-Setup-*.exe.sha256
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          gh release create $tag (Get-ChildItem dist/Clipnest-Setup-*).FullName --title "Clipnest $($tag.TrimStart('v'))" --generate-notes

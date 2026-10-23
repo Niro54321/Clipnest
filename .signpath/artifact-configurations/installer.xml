@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "installer": the Inno Setup installer, staged as
+     Clipnest-Setup.exe and zipped by actions/upload-artifact. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="Clipnest-Setup.exe" product-name="Clipnest">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

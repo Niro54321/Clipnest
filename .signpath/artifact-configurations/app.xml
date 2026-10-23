@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "app": the PyInstaller folder (dist/Clipnest),
+     zipped by actions/upload-artifact. Signs the app's own executable only. -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="Clipnest.exe" product-name="Clipnest">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

@@ -39,13 +39,45 @@ Then trim it, resize it for TikTok/Reels, and add text and a logo in the built-i
 Get `Clipnest-Setup-<version>.exe` from [Releases](https://github.com/Niro54321/Clipnest/releases).
 It installs for your user only (no admin prompt) and can fetch FFmpeg for you with winget.
 
-The installer isn't code-signed yet, so Windows SmartScreen may say *"Windows protected your PC"*:
-click **More info → Run anyway**. To check that your copy is the one published here, compare its
-SHA-256 with the `.sha256` file next to it in the release:
+The installer isn't code-signed yet (see the [code signing policy](#code-signing-policy)), so
+Windows SmartScreen may say *"Windows protected your PC"*: click **More info → Run anyway**.
+To check that your copy is the one published here, compare its SHA-256 with the `.sha256` file
+next to it in the release:
 
 ```bash
 certutil -hashfile Clipnest-Setup-1.0.0.exe SHA256
 ```
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/). *Status: applied for, not active yet; releases up to
+now are unsigned.*
+
+Every signed release is built by the [Release workflow](.github/workflows/release.yml) on a
+GitHub-hosted runner, straight from the source in this repository. Only Clipnest's own files are
+signed (`Clipnest.exe` and the installer); the libraries inside keep their makers' signatures.
+
+| Role | Members |
+| --- | --- |
+| Committers and reviewers | [Niro54321](https://github.com/Niro54321) |
+| Approvers | [Niro54321](https://github.com/Niro54321) |
+
+Changes from anyone else come in as pull requests and are reviewed before they're merged. Every
+signing request is approved by hand.
+
+### Privacy
+
+Clipnest has no account, no telemetry and no analytics. It doesn't transfer any information to
+other networked systems unless you ask it to:
+
+- It connects only to the site of a link you paste or copy (and the servers that site sends the
+  video from) to read and download that video.
+- *Catch copied links* reads the clipboard on your computer to spot video links; nothing from it
+  is sent anywhere until you download that link.
+- Settings stay on your computer in `%APPDATA%\Clipnest`.
+- If you tick the FFmpeg option in the installer, it runs `winget` to download FFmpeg from its
+  publisher. That's a separate program under its own licence and terms.
 
 ## Run from source
 

@@ -12,6 +12,12 @@ AppName=Clipnest
 AppVersion={#AppVersion}
 AppVerName=Clipnest {#AppVersion}
 AppPublisher=Niro54321
+; SignPath checks the product name on what it signs
+VersionInfoProductName=Clipnest
+VersionInfoProductVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
+VersionInfoCompany=Niro54321
+VersionInfoDescription=Clipnest Setup
 AppPublisherURL=https://github.com/Niro54321/Clipnest
 AppSupportURL=https://github.com/Niro54321/Clipnest/issues
 AppUpdatesURL=https://github.com/Niro54321/Clipnest/releases

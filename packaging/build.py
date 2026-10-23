@@ -1,6 +1,6 @@
 """Builds the Windows installer.
 
-    .venv\\Scripts\\python.exe packaging\\build.py [--skip-test] [--network]
+    .venv\\Scripts\\python.exe packaging\\build.py [--skip-test] [--network] [--app | --installer]
 
 1. icon, version info and third-party notices into build/
 2. PyInstaller: dist/Clipnest (the app, plus a self-test exe)
@@ -136,13 +136,22 @@ def inno() -> Path:
 
 
 def main() -> None:
-    step(f"Clipnest {__version__}: icon and version info")
-    prepare()
-    step("PyInstaller")
-    out = pyinstaller()
-    if "--skip-test" not in sys.argv:
-        step("Self-test in the packaged app")
-        selftest(out)
+    # CI signs in between: --app builds and tests dist/Clipnest, the app gets signed,
+    # then --installer packs the signed files into the setup.
+    app_stage = "--installer" not in sys.argv
+    installer_stage = "--app" not in sys.argv
+    if app_stage:
+        step(f"Clipnest {__version__}: icon and version info")
+        prepare()
+        step("PyInstaller")
+        out = pyinstaller()
+        if "--skip-test" not in sys.argv:
+            step("Self-test in the packaged app")
+            selftest(out)
+    if not installer_stage:
+        return
+    if not (BUILD / "clipnest.ico").exists():
+        prepare()
     step("Inno Setup")
     setup = inno()
     digest = hashlib.sha256(setup.read_bytes()).hexdigest()
